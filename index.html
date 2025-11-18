@@ -1,9 +1,351 @@
 <!DOCTYPE html>
-<html>
+<html lang="pt-BR">
 <head>
-    <title>My Website</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gerador de Nota Fiscal de Serviço (NFS-e)</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f0f2f5;
+            color: #333;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            display: flex;
+            gap: 20px;
+            flex-wrap: wrap;
+        }
+
+        .col {
+            flex: 1;
+            min-width: 300px;
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        h1, h2, h3 { margin-top: 0; color: #2c3e50; }
+        
+        .form-group { margin-bottom: 15px; }
+        label { display: block; margin-bottom: 5px; font-weight: bold; font-size: 0.9em; }
+        input[type="text"], input[type="number"] {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            box-sizing: border-box; 
+        }
+
+        .row { display: flex; gap: 10px; }
+        .row .form-group { flex: 1; }
+
+        button {
+            background-color: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 15px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 1em;
+            width: 100%;
+        }
+        button:hover { background-color: #0056b3; }
+        
+        button.btn-add { width: auto; margin-top: 0; }
+        button.btn-remove { background-color: #dc3545; width: auto; padding: 5px 10px; font-size: 0.8em; }
+        button.btn-print { background-color: #333; margin-bottom: 20px; width: auto; }
+
+        ul#itemsList { list-style: none; padding: 0; border: 1px solid #eee; border-radius: 4px; }
+        ul#itemsList li {
+            display: flex; justify-content: space-between; align-items: center;
+            padding: 8px; border-bottom: 1px solid #eee;
+        }
+        ul#itemsList li:last-child { border-bottom: none; }
+
+        .invoice-box {
+            border: 1px solid #000;
+            padding: 30px;
+            background: white;
+        }
+        
+        .invoice-header {
+            display: flex;
+            justify-content: space-between;
+            border-bottom: 2px solid #000;
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+        }
+
+        .invoice-info { margin-bottom: 20px; display: flex; justify-content: space-between; }
+        .invoice-info div { width: 48%; }
+
+        /* Tabelas da Nota */
+        table { width: 100%; border-collapse: collapse; margin-bottom: 20px; font-size: 0.9em; }
+        th, td { border: 1px solid #ccc; padding: 8px; text-align: left; }
+        th { background-color: #f8f9fa; }
+        .text-right { text-align: right; }
+
+        .tax-grid {
+            display: grid;
+            grid-template-columns: repeat(5, 1fr);
+            gap: 0;
+            border: 1px solid #ccc;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+        .tax-item { padding: 10px; border-right: 1px solid #ccc; font-size: 0.85em; }
+        .tax-item:last-child { border-right: none; }
+        .tax-item strong { display: block; margin-bottom: 5px; }
+
+        .totals { float: right; width: 40%; text-align: right; }
+        .totals div { margin-bottom: 5px; }
+        .total-final { font-size: 1.2em; font-weight: bold; border-top: 1px solid #000; padding-top: 5px; margin-top: 5px; }
+
+        @media (max-width: 768px) {
+            .container { flex-direction: column; }
+            .tax-grid { grid-template-columns: repeat(2, 1fr); }
+        }
+
+        @media print {
+            body { background-color: white; padding: 0; }
+            .no-print { display: none !important; }
+            .col { box-shadow: none; padding: 0; border: none; }
+            .invoice-box { border: 1px solid #000; }
+        }
+    </style>
 </head>
 <body>
-    <h1>Hello, World!</h1>
+
+    <header class="no-print" style="max-width: 1200px; margin: 0 auto 20px auto; display: flex; justify-content: space-between; align-items: center;">
+        <h1>Emissor NFS-e</h1>
+        <button onclick="window.print()" class="btn-print">Imprimir Nota</button>
+    </header>
+
+    <div class="container">
+        <div class="col no-print">
+            <h2>Inserir Dados</h2>
+            
+            <div class="form-group" style="border: 1px solid #ddd; padding: 15px; border-radius: 4px;">
+                <label>Adicionar Item/Serviço</label>
+                <input type="text" id="itemDesc" placeholder="Descrição (ex: Consultoria)" style="margin-bottom: 5px;">
+                <div style="display: flex; gap: 5px;">
+                    <input type="number" id="itemVal" placeholder="Valor (R$)">
+                    <button onclick="addItem()" class="btn-add">Adicionar</button>
+                </div>
+                
+                <div style="margin-top: 10px;">
+                    <label>Itens na Nota:</label>
+                    <ul id="itemsList">
+                        <li style="color: #999; text-align: center;">Nenhum item.</li>
+                    </ul>
+                    <div style="text-align: right; font-weight: bold; margin-top: 10px;">
+                        Total Bruto: <span id="displayTotalSale">R$ 0,00</span>
+                    </div>
+                </div>
+            </div>
+
+            <h3>Impostos (%)</h3>
+            <div class="row">
+                <div class="form-group">
+                    <label>IRPF</label>
+                    <input type="number" id="taxIRPF" value="1.5" step="0.1">
+                </div>
+                <div class="form-group">
+                    <label>PIS</label>
+                    <input type="number" id="taxPIS" value="0.65" step="0.01">
+                </div>
+            </div>
+            <div class="row">
+                <div class="form-group">
+                    <label>COFINS</label>
+                    <input type="number" id="taxCOFINS" value="3.0" step="0.1">
+                </div>
+                <div class="form-group">
+                    <label>INSS</label>
+                    <input type="number" id="taxINSS" value="11.0" step="0.1">
+                </div>
+            </div>
+            <div class="form-group">
+                <label>ISSQN</label>
+                <input type="number" id="taxISSQN" value="5.0" step="0.1">
+            </div>
+
+            <button onclick="generateInvoice()" style="margin-top: 10px; background-color: #28a745;">GERAR NOTA FISCAL</button>
+        </div>
+
+        <div class="col">
+            <div class="invoice-box" id="invoiceArea">
+                
+                <div class="invoice-header">
+                    <div>
+                        <h2 style="margin:0;">NOTA FISCAL DE SERVIÇO</h2>
+                        <small>NFS-e Eletrônica</small>
+                    </div>
+                    <div style="text-align: right;">
+                        <strong>Nº 000123</strong><br>
+                        <span id="invDate">Data: --/--/----</span>
+                    </div>
+                </div>
+
+                <div class="invoice-info">
+                    <div style="border: 1px solid #eee; padding: 10px;">
+                        <strong>PRESTADOR</strong><br>
+                        VIRESCO LTDA<br>
+                        CNPJ: CNPJ: 060.098.783/0001-10<br>
+                        Rua Antônio Finati Sobrinho, 130, Jardim Londres, CEP 13.060-242, Capinas, São Paulo, Brasil
+                    </div>
+                    <div style="border: 1px solid #eee; padding: 10px;">
+                        <strong>TOMADOR</strong><br>
+                        Cliente Consumidor<br>
+                        CPF/CNPJ: Não informado
+                    </div>
+                </div>
+
+                <strong>DETALHAMENTO DOS SERVIÇOS</strong>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Descrição</th>
+                            <th class="text-right" style="width: 120px;">Valor (R$)</th>
+                        </tr>
+                    </thead>
+                    <tbody id="invoiceItemsBody">
+                        <tr><td colspan="2" style="text-align: center; padding: 20px;">Nenhum serviço listado.</td></tr>
+                    </tbody>
+                </table>
+
+                <strong>TAXAS APLICADAS</strong>
+                <div class="tax-grid">
+                    <div class="tax-item"><strong>PIS</strong><span id="valPIS">0,00</span></div>
+                    <div class="tax-item"><strong>COFINS</strong><span id="valCOFINS">0,00</span></div>
+                    <div class="tax-item"><strong>INSS</strong><span id="valINSS">0,00</span></div>
+                    <div class="tax-item"><strong>IRPF</strong><span id="valIRPF">0,00</span></div>
+                    <div class="tax-item"><strong>ISSQN</strong><span id="valISSQN">0,00</span></div>
+                </div>
+
+                <div class="totals">
+                    <div>Total Impostos: <span id="totalTaxes" style="color: red;">R$ 0,00</span></div>
+                    <div class="total-final">VALOR LÍQUIDO: <span id="netValue" style="color: green;">R$ 0,00</span></div>
+                    <div style="font-size: 0.8em; margin-top: 5px;">Valor Bruto: <span id="totalNoteValue">R$ 0,00</span></div>
+                </div>
+                <div style="clear: both;"></div>
+
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let items = [];
+        
+        const formatCurrency = (value) => {
+            return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
+        };
+
+        document.getElementById('invDate').textContent = 'Emissão: ' + new Date().toLocaleDateString('pt-BR');
+
+        function addItem() {
+            const descInput = document.getElementById('itemDesc');
+            const valInput = document.getElementById('itemVal');
+            
+            const desc = descInput.value.trim();
+            const val = parseFloat(valInput.value);
+
+            if (!desc || isNaN(val) || val <= 0) {
+                alert("Preencha a descrição e um valor válido.");
+                return;
+            }
+
+            items.push({ description: desc, value: val });
+            
+            descInput.value = '';
+            valInput.value = '';
+            descInput.focus();
+
+            renderInputList();
+            updateTotalDisplay();
+        }
+
+        function removeItem(index) {
+            items.splice(index, 1);
+            renderInputList();
+            updateTotalDisplay();
+        }
+
+        function renderInputList() {
+            const list = document.getElementById('itemsList');
+            if (items.length === 0) {
+                list.innerHTML = '<li style="color: #999; text-align: center;">Nenhum item.</li>';
+                return;
+            }
+            list.innerHTML = '';
+            items.forEach((item, index) => {
+                const li = document.createElement('li');
+                li.innerHTML = `
+                    <span>${item.description}</span>
+                    <span>
+                        ${formatCurrency(item.value)}
+                        <button onclick="removeItem(${index})" class="btn-remove">X</button>
+                    </span>
+                `;
+                list.appendChild(li);
+            });
+        }
+
+        function updateTotalDisplay() {
+            const total = items.reduce((acc, item) => acc + item.value, 0);
+            document.getElementById('displayTotalSale').textContent = formatCurrency(total);
+        }
+
+        function generateInvoice() {
+            const totalValue = items.reduce((acc, item) => acc + item.value, 0);
+
+            if (totalValue === 0) {
+                alert("Adicione pelo menos um item para gerar a nota.");
+                return;
+            }
+
+            const getRate = (id) => parseFloat(document.getElementById(id).value) || 0;
+            const rIRPF = getRate('taxIRPF');
+            const rPIS = getRate('taxPIS');
+            const rCOFINS = getRate('taxCOFINS');
+            const rINSS = getRate('taxINSS');
+            const rISSQN = getRate('taxISSQN');
+
+            const calc = (rate) => (totalValue * rate) / 100;
+            const vIRPF = calc(rIRPF);
+            const vPIS = calc(rPIS);
+            const vCOFINS = calc(rCOFINS);
+            const vINSS = calc(rINSS);
+            const vISSQN = calc(rISSQN);
+
+            const totalTaxes = vIRPF + vPIS + vCOFINS + vINSS + vISSQN;
+            const netValue = totalValue - totalTaxes;
+
+            const tbody = document.getElementById('invoiceItemsBody');
+            tbody.innerHTML = '';
+            items.forEach(item => {
+                const tr = document.createElement('tr');
+                tr.innerHTML = `<td>${item.description}</td><td class="text-right">${formatCurrency(item.value)}</td>`;
+                tbody.appendChild(tr);
+            });
+
+            const setTax = (id, val) => document.getElementById(id).textContent = formatCurrency(val);
+            setTax('valPIS', vPIS);
+            setTax('valCOFINS', vCOFINS);
+            setTax('valINSS', vINSS);
+            setTax('valIRPF', vIRPF);
+            setTax('valISSQN', vISSQN);
+
+            document.getElementById('totalTaxes').textContent = formatCurrency(totalTaxes);
+            document.getElementById('netValue').textContent = formatCurrency(netValue);
+            document.getElementById('totalNoteValue').textContent = formatCurrency(totalValue);
+        }
+    </script>
 </body>
 </html>
